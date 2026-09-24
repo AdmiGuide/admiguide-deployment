@@ -1,0 +1,84 @@
+services:
+
+  # Base de données MySQL d'AdmiGuide.
+  mysql:
+    image: mysql:8.4
+
+    # Crée la base et l'utilisateur MySQL au premier démarrage.
+    environment:
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+
+    # Conserve les données MySQL.
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+
+  # Microservice d'intelligence artificielle.
+  ai:
+    # Utilise le Dockerfile de admiguide-ai.
+    build:
+      context: ../admiguide-ai
+
+    # Variables utilisées pour appeler le modèle de langage.
+    environment:
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      LLM_MODEL_NAME: ${LLM_MODEL_NAME}
+
+    # Rend FastAPI accessible depuis Windows.
+    ports:
+      - "8001:8001"
+
+    # Conserve ChromaDB et le modèle téléchargé.
+    volumes:
+      - chroma_data:/app/data/chroma
+      - huggingface_cache:/root/.cache/huggingface
+
+
+  # API métier Django / Django REST Framework.
+  backend:
+    build:
+      context: ../admiguide-backend
+
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      DJANGO_DEBUG: ${DJANGO_DEBUG}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS}
+
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_HOST: mysql
+      DB_PORT: 3306
+
+      # Django communique avec FastAPI grâce au nom du service.
+      AI_SERVICE_URL: http://ai:8001
+
+    ports:
+      - "8000:8000"
+
+    depends_on:
+      - mysql
+
+
+  # Interface Angular servie avec Nginx.
+  frontend:
+    build:
+      context: ../admiguide-frontend
+
+    # Rend l'application accessible depuis le navigateur.
+    ports:
+      - "4200:80"
+
+    # Le frontend utilise l'API Django.
+    depends_on:
+      - backend
+
+
+# Volumes persistants utilisés par AdmiGuide.
+volumes:
+  mysql_data:
+  chroma_data:
+  huggingface_cache:
